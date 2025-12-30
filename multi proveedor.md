@@ -272,4 +272,182 @@ R --&gt; S[Productos multi-proveedor]`
 <p>Soporte a decisiones estratégicas</p>
 </li>
 </ul>
+<h1 id="apéndice">Apéndice</h1>
+<h2 id="ejemplo-de-extracción-de-texto-a-partir-de-la-descripción-limpia">Ejemplo de extracción de texto a partir de la descripción limpia</h2>
+<h1 id="extracción-de-features-estructurales-desde-descripcion_limpia">Extracción de Features Estructurales desde <code>descripcion_limpia</code></h1>
+<h2 id="motivación-del-paso">1. Motivación del Paso</h2>
+<p>Las descripciones de líneas de factura presentan una <strong>alta variabilidad léxica</strong>, incluso cuando refieren al <strong>mismo producto físico</strong>:</p>
+<ul>
+<li>“Agua mineral 500 ml”</li>
+<li>“Agua sin gas 0,5L”</li>
+<li>“Agua mineral x6 botellas 500cc”</li>
+<li>“Agua bidón 6x0.5 litros”</li>
+</ul>
+<p>Si bien los <strong>embeddings</strong> capturan similitud semántica, <strong>no garantizan compatibilidad física</strong>. Por ejemplo, un embedding puede considerar similares:</p>
+<ul>
+<li>“Leche 1L”</li>
+<li>“Leche 200ml”</li>
+</ul>
+<p>Desde el punto de vista del matching de productos, <strong>esto es incorrecto</strong>.</p>
+<p>El objetivo de este paso es:</p>
+<blockquote>
+<p>Extraer señales <strong>estructurales y cuantitativas</strong> que permitan introducir <strong>reglas duras de compatibilidad</strong>, reduciendo falsos positivos.</p>
+</blockquote>
+<hr>
+<h2 id="principio-de-diseño">2. Principio de Diseño</h2>
+<p>Este paso se rige por tres principios:</p>
+<ol>
+<li>
+<p><strong>Extracción conservadora</strong><br>
+Si no se puede inferir con confianza, se devuelve <code>None</code>.</p>
+</li>
+<li>
+<p><strong>Normalización a unidades base</strong><br>
+Permite comparaciones numéricas directas.</p>
+</li>
+<li>
+<p><strong>No bloquear el matching por ausencia de información</strong><br>
+Si una feature no está presente, <strong>no invalida</strong> el par.</p>
+</li>
+</ol>
+<hr>
+<h2 id="input-del-proceso">3. Input del Proceso</h2>
+<h3 id="columna-fuente">Columna fuente</h3>
+<pre><code>descripcion_limpia : str
+</code></pre>
+<p>Características esperadas:</p>
+<ul>
+<li>Texto en minúsculas</li>
+<li>Sin caracteres extraños</li>
+<li>Sin HTML</li>
+<li>Con abreviaturas comunes preservadas (<code>kg</code>, <code>ml</code>, <code>x6</code>, etc.)</li>
+</ul>
+<p>Este paso <strong>no limpia texto</strong>, solo <strong>interpreta</strong>.</p>
+<hr>
+<h2 id="features-extraídas">4. Features Extraídas</h2>
+
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Columna</th>
+<th>Tipo</th>
+<th>Ejemplo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unidad</td>
+<td><code>unidad_norm</code></td>
+<td>str / None</td>
+<td><code>"g"</code>, <code>"ml"</code>, <code>"un"</code></td>
+</tr>
+<tr>
+<td>Contenido</td>
+<td><code>contenido_norm</code></td>
+<td>float / None</td>
+<td><code>500.0</code>, <code>1000.0</code></td>
+</tr>
+<tr>
+<td>Pack</td>
+<td><code>pack_norm</code></td>
+<td>int</td>
+<td><code>1</code>, <code>6</code>, <code>12</code></td>
+</tr>
+</tbody>
+</table><hr>
+<h2 id="extracción-de-pack-pack_norm">5. Extracción de Pack (<code>pack_norm</code>)</h2>
+<p>Se detectan multiplicidades del tipo:</p>
+<ul>
+<li><code>x 6</code>, <code>por 6</code></li>
+<li><code>pack 6</code></li>
+<li><code>caja 12</code></li>
+</ul>
+<p>Si no se detecta pack → <code>pack_norm = 1</code>.</p>
+<p>Nunca se devuelve <code>0</code> o <code>None</code>.</p>
+<hr>
+<h2 id="extracción-de-contenido-y-unidad">6. Extracción de Contenido y Unidad</h2>
+<p>Unidades soportadas y normalizadas:</p>
+
+<table>
+<thead>
+<tr>
+<th>Texto detectado</th>
+<th>Unidad normalizada</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kg, kilo</td>
+<td>g</td>
+</tr>
+<tr>
+<td>g, gr</td>
+<td>g</td>
+</tr>
+<tr>
+<td>l, lt</td>
+<td>ml</td>
+</tr>
+<tr>
+<td>ml, cc</td>
+<td>ml</td>
+</tr>
+<tr>
+<td>un, unidad</td>
+<td>un</td>
+</tr>
+</tbody>
+</table><p>Ejemplo:</p>
+
+<table>
+<thead>
+<tr>
+<th>Descripción</th>
+<th>unidad_norm</th>
+<th>contenido_norm</th>
+<th>pack_norm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agua 500ml</td>
+<td>ml</td>
+<td>500</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Agua x6 500cc</td>
+<td>ml</td>
+<td>500</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Azúcar 1kg</td>
+<td>g</td>
+<td>1000</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Servicio de flete</td>
+<td>None</td>
+<td>None</td>
+<td>1</td>
+</tr>
+</tbody>
+</table><hr>
+<h2 id="uso-en-el-matching">7. Uso en el Matching</h2>
+<p>Estas features <strong>no generan matching</strong>, solo lo restringen.</p>
+<ul>
+<li>Unidades incompatibles → <code>DIFFERENT</code></li>
+<li>Contenido muy distinto → <code>DIFFERENT</code></li>
+<li>Ausencia de datos → no bloquea</li>
+</ul>
+<hr>
+<h2 id="filosofía">8. Filosofía</h2>
+<p>Este paso no intenta “entender” el producto, sino <strong>evitar errores materiales obvios</strong>.</p>
+<p>Es un control físico que complementa embeddings y protege la integridad del matching.</p>
+<hr>
+<h2 id="conclusión-1">9. Conclusión</h2>
+<p>La extracción de features estructurales desde <code>descripcion_limpia</code> es un componente crítico para garantizar que el matching de productos refleje <strong>equivalencia real</strong> y no solo similitud textual.</p>
 
